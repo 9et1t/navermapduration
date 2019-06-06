@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<body>
+<?php
+include_once './simplehtmldom_1_9/simple_html_dom.php';
+function file_get_contents_curl($url) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_HEADER, 0);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // https 일때 이 한줄 추가 필요
+    //Set curl to return the data instead of printing it to the browser.
+    $data = curl_exec($ch);
+    curl_close($ch);
+    return $data;
+}
+$dx=126.9783881; //도착지 좌표
+$dy=37.5666102;
+$sx=127.2164716; // 출발지 좌표
+$sy=37.6359836;
+
+$url = "https://m.map.naver.com/spirra/findCarRoute.nhn?route=route3&output=json&result=web3&coord_type=latlng&search=2&car=0&mileage=12.4&start=$sx,$sy,출발지&destination=$dx,$dy,목적지";//결과 json값 
+$json = file_get_contents("$url");
+$result_json2 = json_decode($json);
+
+//print_r($result_json2);
+echo ($result_json2->routes[0]->summary->duration)/60; // 걸리는 Minute
+?>
+</body>
+</html>
+
+
+			
