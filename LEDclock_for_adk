@@ -1,0 +1,988 @@
+#include <SoftwareSerial.h>            
+                
+#include <TinyGPS.h>            
+#include <Wire.h>             
+#include <Adafruit_GFX.h>           
+#include <Adafruit_SH1106.h>            
+                
+#define OLED_RESET 4            
+                
+                
+/* This sample code demonstrates the normal use of a TinyGPS object.    
+   It requires the use of SoftwareSerial, and assumes that you have a   
+   4800-baud serial GPS device hooked up on pins 4(rx) and 3(tx).   
+*/                
+                
+TinyGPS gps;              
+  
+
+Adafruit_SH1106 display(OLED_RESET);          
+                
+ unsigned long currentHr = 16;          
+ unsigned long currentMin = 30;         
+                
+static void smartdelay(unsigned long ms);       
+static void print_float(float val, float invalid, int len, int prec);     
+static void print_int(unsigned long val, unsigned long invalid, int len);   
+static void print_date(TinyGPS &gps);         
+static void print_str(const char *str, int len);       
+float flat, flon;             
+int weatherpin1=22; //날씨 led
+int weatherpin2=23;
+int weatherpin3=24;
+int durationpin1=25; // 임박시간 led
+int durationpin2=26;
+int durationpin3=27;   
+int buttonpin1=2;             
+int buttonpin2=3;             
+int buttonpin3=4;             
+int piezo1=5;             
+int piezo2=6;             
+int buttoncounter=0;            
+int displaynum=0;             
+int buttonstate1=0;             
+int buttonstate2=0;             
+int buttonstate3=0;             
+int lastbuttonstate1=0;           
+int lastbuttonstate2=0;           
+int lastbuttonstate3=0;           
+int alarmonoff=0;             
+int piezoonoff=0;             
+  unsigned long alarm_h=0;            
+  unsigned long alarm_m=0;            
+  unsigned long alarm_s=0;            
+  unsigned long year=19;            
+  unsigned long mon=6;            
+  unsigned long day=5;            
+  unsigned long yoil=2;           
+int check=0;              
+String color="WHITE";           
+String cid="aaaa";  
+String str="";  //송신위한 문자열
+String strresult=""; //수신위한 문자열   
+
+  int first = 0;
+    int second2 =0;
+    int third = 0;
+    int strlength =0;
+    String str1 = "";
+    String str2 = "";
+    String str3 = "";
+    String str4 = "";
+  unsigned long expH = 0;
+  unsigned long expM = 0;
+  unsigned long durationH = 0;
+  unsigned long durationM = 0;
+
+  
+void setup()              
+{ 
+Serial2.begin(115200);          
+  Serial.begin(115200);           
+  display.begin(SH1106_SWITCHCAPVCC, 0x3C);         
+  Serial.println("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  Distance Course Card  Chars Sentences Checksum");
+  Serial.println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----  ---- to London  ----  RX    RX        Fail");
+  Serial.println("-------------------------------------------------------------------------------------------------------------------------------------");
+pinMode(buttonpin1,INPUT_PULLUP);         
+pinMode(buttonpin2,INPUT_PULLUP);         
+pinMode(buttonpin3,INPUT_PULLUP);         
+pinMode(piezo1,OUTPUT);           
+pinMode(piezo2,OUTPUT);
+pinMode(weatherpin1,OUTPUT);         
+pinMode(weatherpin2,OUTPUT);         
+pinMode(weatherpin3,OUTPUT);         
+pinMode(durationpin1,OUTPUT);         
+pinMode(durationpin2,OUTPUT);         
+pinMode(durationpin3,OUTPUT);              
+  Serial3.begin(9600);             
+}               
+                
+void loop()             
+{               
+  
+  unsigned long age, date, time, chars = 0;       
+  unsigned short sentences = 0, failed = 0;       
+  unsigned long currentMillis = millis();         
+  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002; 
+   
+    currentMillis = currentMillis%3600000;        
+   
+    unsigned long second = currentMillis%60000; // 60초 단위로 끊음   
+    unsigned long sec = second/1000; //초로표시       
+    if(sec==0&&check==0)            
+    {               
+      currentMin++;             
+      check=1;              
+    }               
+    if(sec==59&&check==1)           
+    {               
+      check=0;              
+    }               
+                
+                
+if(currentHr==alarm_h&&currentMin==alarm_m&&sec<=10&&alarmonoff==1)//10초간 알람 울리기
+{               
+  piezoonoff=1;             
+  if(piezoonoff==1)             
+  {               
+digitalWrite(piezo1,HIGH);            
+digitalWrite(piezo2,HIGH);            
+if(digitalRead(buttonpin2)==LOW) // 2번 버튼으로 알람끄기      
+{               
+piezoonoff=0;             
+digitalWrite(piezo1,LOW);           
+digitalWrite(piezo2,LOW);           
+                
+}               
+  }               
+}               
+else                
+{               
+piezoonoff=0;             
+digitalWrite(piezo1,LOW);           
+digitalWrite(piezo2,LOW);           
+}               
+                
+buttonstate1=digitalRead(buttonpin1);         
+if(buttonstate1!=lastbuttonstate1)          
+{               
+   if (digitalRead(buttonpin1)==LOW) //화면이동 함수      
+   {                
+    displaynum++;             
+   Serial.print("check");             
+    Serial.print(displaynum);           
+    if(displaynum==8) displaynum=0;         
+    Serial.print(displaynum);           
+                    
+   }                
+                
+}               
+lastbuttonstate1=buttonstate1;          
+ switch (displaynum)            
+ {            
+ case 0: //일반 시계화면            
+ {                
+                
+                    
+buttonstate2=digitalRead(buttonpin2);         
+if(buttonstate2!=lastbuttonstate2)          
+{               
+   if (digitalRead(buttonpin2)==LOW) //알람 온/오프      
+   {                
+alarmonoff=!alarmonoff;           
+                
+   }                
+                
+}               
+lastbuttonstate2=buttonstate2;          
+                
+    display.clearDisplay();           
+    if (alarmonoff==1)            
+    display.setTextColor(BLACK,WHITE);          
+    if (alarmonoff==0)            
+    display.setTextColor(WHITE,BLACK);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);            
+     displaydays();             
+    display.setTextSize(2);           
+    display.setCursor(5,30);            
+    if( currentMin >= 60 ) {            
+      currentHr = currentHr + 1;          
+      currentMin = currentMin - 60;         
+    }if( currentHr <12 ) {            
+      display.print("AM");            
+    }               
+    else if( currentHr <24 ) {            
+      display.print("PM");            
+    }               
+    else {                
+      currentHr = currentHr -24;          
+      display.print("AM");            
+   daycalculate();             
+    }               
+    display.print((unsigned long)currentHr);        
+    display.print(":");             
+    display.print((unsigned long)currentMin);       
+    display.print(":");             
+    display.print((unsigned long)sec);              
+    display.display();              
+                
+    break;                
+                
+                
+}               
+ case 1: //알람세팅 화면            
+ {                
+                
+buttonstate2=digitalRead(buttonpin2);         
+if(buttonstate2!=lastbuttonstate2)          
+{               
+   if (digitalRead(buttonpin2)==LOW) //알람 시 +       
+   {                
+alarm_h++;              
+   }                
+                
+}               
+lastbuttonstate2=buttonstate2;          
+                
+buttonstate3=digitalRead(buttonpin3);         
+if(buttonstate3!=lastbuttonstate3)          
+{               
+   if (digitalRead(buttonpin3)==LOW) //알람 분 +       
+   {                
+alarm_m++;              
+   }                
+                
+}               
+lastbuttonstate3=buttonstate3;          
+                
+                
+                
+                
+  display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);            
+     display.print("setAlarm");           
+     if(alarmonoff==1)display.print("O");         
+     else display.print("X");           
+    display.setTextSize(2);           
+    display.setCursor(5,30);            
+    if( alarm_m >= 60 ) {           
+      alarm_h = alarm_h + 1;            
+      alarm_m = alarm_m - 60;           
+    }               
+    if( alarm_h <12 ) {           
+      display.print("AM");            
+    }               
+    else if( alarm_h <24 ) {            
+      display.print("PM");            
+    }               
+    else {                
+      alarm_h = alarm_h -24;            
+      display.print("AM");            
+    }               
+    display.print((unsigned long)alarm_h);          
+                
+                
+    display.print(":");             
+    display.print((unsigned long)alarm_m);        
+    display.print(":");             
+    display.print((unsigned long)alarm_s);            
+    display.display();              
+                    
+    break;                
+                    
+  }                 
+  case 2://시계 시간 설정           
+ {                
+                
+                
+                
+                
+                
+buttonstate3=digitalRead(buttonpin3);         
+if(buttonstate3!=lastbuttonstate3)          
+{               
+   if (digitalRead(buttonpin3)==LOW) //시계 분 +       
+   {                
+currentMin++;             
+   }                
+                
+}               
+lastbuttonstate3=buttonstate3;          
+                
+buttonstate2=digitalRead(buttonpin2);         
+if(buttonstate2!=lastbuttonstate2)          
+{               
+   if (digitalRead(buttonpin2)==LOW) //시계 시 +       
+   {                
+currentHr++;              
+   }                
+                
+}               
+lastbuttonstate2=buttonstate2;          
+                
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);            
+    display.print("clcock set");            
+    display.setTextSize(2);           
+    display.setCursor(5,30);            
+                    
+    if( currentMin >= 60 ) {            
+      currentHr = currentHr + 1;          
+      currentMin = currentMin - 60;         
+    }               
+    if( currentHr <12 ) {           
+      display.print("AM");            
+    }               
+    else if( currentHr <24 ) {            
+      display.print("PM");            
+    }               
+    else {                
+      currentHr = currentHr -24;          
+      display.print("AM");            
+      daycalculate();             
+                  
+    }               
+    display.print((unsigned long)currentHr);        
+    display.print(":");             
+    display.print((unsigned long)currentMin);       
+    display.print(":");             
+    display.print((unsigned long)sec);              
+    display.display();              
+                    
+    break;                
+  }                 
+                
+ case 3://시계 날짜 설정            
+ {                
+                
+buttonstate2=digitalRead(buttonpin2);         
+if(buttonstate2!=lastbuttonstate2)          
+{               
+   if (digitalRead(buttonpin2)==LOW) //시계 시 +       
+   {                
+monthcalculate(); 
+   }                
+                
+}               
+lastbuttonstate2=buttonstate2;          
+
+                
+buttonstate3=digitalRead(buttonpin3);         
+if(buttonstate3!=lastbuttonstate3)          
+{               
+   if (digitalRead(buttonpin3)==LOW) //시계 시 +       
+   {                
+daycalculate();            
+   }                
+                
+}               
+lastbuttonstate3=buttonstate3;          
+                
+                
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);            
+    display.print("day set");  
+    display.setCursor(5,30);
+    displaydays();                      
+    display.display();              
+    break;                
+    }
+     case 4:
+  {
+      
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);            
+   display.print("gps");  
+    display.setCursor(5,30);
+    display.print("X");  
+    display.print(flat);
+display.print("Y");  
+display.print(flon);    
+    display.display();  
+    break;      
+  }
+   case 5:
+  {
+      
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);  
+    if(Serial3.available())
+    {          
+   display.print("Serial3ok"); 
+    } 
+    else display.print("Serial3err"); 
+    display.setCursor(5,30);
+    if(Serial2.available())
+    {          
+   display.print("Serial2ok"); 
+    } 
+    else display.print("Serial2err"); 
+    display.display();  
+    break;      
+  }
+   case 6:
+  {
+      
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);  
+    
+   display.print(str);  //아웃 확인
+   
+   
+  
+    display.display();  
+    break;      
+  }
+  case 7:
+  {
+      
+    display.clearDisplay();           
+    display.setTextColor(WHITE);          
+    display.setTextSize(2);           
+    display.setCursor(5,10);  
+    if(Serial2.available())
+    {          
+   display.print(strresult);  //인 확인
+    } 
+    else display.print("Serial2err"); 
+  
+    display.display();  
+    break;      
+  }
+     
+               
+                
+ }                
+  print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);    
+  print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);      
+  gps.f_get_position(&flat, &flon, &age);         
+  print_float(flat, TinyGPS::GPS_INVALID_F_ANGLE, 10, 6);     
+  print_float(flon, TinyGPS::GPS_INVALID_F_ANGLE, 11, 6);     
+  print_int(age, TinyGPS::GPS_INVALID_AGE, 5);        
+  print_date(gps);              
+  print_float(gps.f_altitude(), TinyGPS::GPS_INVALID_F_ALTITUDE, 7, 2);   
+  print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);    
+  print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);    
+  print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
+  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
+  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
+  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
+str=cid;
+str.concat(','); 
+str.concat(flat);
+str.concat(',');
+str.concat(flon);
+
+ //id + 위치 wifi 모듈로 전송 
+
+
+Serial2.print('str'); //송신
+strresult=Serial2.readString(); //도착희망시간 + 희망요일+ 소요시간 + 날씨 정보 wifi모듈에서 수신
+
+   first = strresult.indexOf(","); // 첫번째 콤마위치
+   second2 = strresult.indexOf(",",first+1); // 두번째 콤마 위치
+   third = strresult.indexOf(",",second2+1); // 세번째 콤마 위치
+   strlength = strresult.length(); // 문자열 길이
+   str1 = strresult.substring(0, first); // 첫번째 토큰 //희망 도착시간 01':'03
+   str2 = strresult.substring(first+1, second2); // 두번째 토큰 // 희망 요일 ex 월수금
+   str3 = strresult.substring(second2+1,third); //세번째 토큰 // 소요시간 ex 53.33분
+   str4 = strresult.substring(third+1,strlength);// 세번째 토큰 //날씨 ex Clear 
+   expH = (unsigned long)(str1.substring(0, 1).toInt());
+   expM = (unsigned long)(str1.substring(5, 6).toInt());
+   durationH = (unsigned long)(str2.toInt());
+   durationM = (unsigned long)(str2.toInt());
+
+
+{
+if(str4.indexOf("Clear")!=-1)
+   digitalWrite(weatherpin1,HIGH);
+else if(str4.indexOf("Clouds")!=-1)
+   digitalWrite(weatherpin2,HIGH);
+else
+digitalWrite(weatherpin3,HIGH);
+}
+//if(요일이 현재 요일일 경우)
+if ((str2.indexOf("월"))!=-1){
+if( yoil==0)
+{
+ if((int(expH-currentHr-durationH))==0)
+ {
+   if((int(expM-currentMin-durationM))>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("화"))!=-1)
+{
+if( yoil==1)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("수"))!=-1){
+if( yoil==2)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("목"))!=-1){
+if( yoil==3)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("금"))!=-1){
+if( yoil==4)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("토"))!=-1){
+if( yoil==5)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15)
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+if ((str2.indexOf("일"))!=-1){
+if( yoil==6)
+{
+  if(int(expH-currentHr-durationH)==0)
+ {
+   if(int(expM-currentMin-durationM)>30)
+   {
+   digitalWrite(durationpin1,HIGH);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,LOW);
+   }
+   else if (int(expM-currentMin-durationM)<30 &&int(expM-currentMin-durationM)>15) 
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,HIGH);
+   digitalWrite(durationpin3,LOW);
+   }
+   else
+   {
+   digitalWrite(durationpin1,LOW);
+   digitalWrite(durationpin2,LOW);
+   digitalWrite(durationpin3,HIGH);
+   }
+ }
+ else
+ {
+  digitalWrite(durationpin1,HIGH);
+ }
+}
+}
+
+  gps.stats(&chars, &sentences, &failed);         
+  print_int(chars, 0xFFFFFFFF, 6);          
+  print_int(sentences, 0xFFFFFFFF, 10);         
+  print_int(failed, 0xFFFFFFFF, 9);         
+  Serial.println();             
+}
+
+  
+                               
+static void smartdelay(unsigned long ms)        
+{               
+  unsigned long start = millis();         
+  do                
+  {               
+    while (Serial3.available())            
+      gps.encode(Serial3.read());            
+  } while (millis() - start < ms);            
+}               
+               
+static void print_float(float val, float invalid, int len, int prec)      
+{               
+  if (val == invalid)             
+  {               
+    while (len-- > 1)             
+      Serial.print('*');              
+    Serial.print(' ');              
+  }               
+  else                
+  {               
+    Serial.print(val, prec);            
+    int vi = abs((int)val);           
+    int flen = prec + (val < 0.0 ? 2 : 1); // . and -       
+    flen += vi >= 1000 ? 4 : vi >= 100 ? 3 : vi >= 10 ? 2 : 1;      
+    for (int i=flen; i<len; ++i)            
+      Serial.print(' ');              
+  }               
+  smartdelay(0);              
+}               
+                
+static void print_int(unsigned long val, unsigned long invalid, int len)    
+{               
+  char sz[32];              
+  if (val == invalid)             
+    strcpy(sz, "*******");            
+  else                
+    sprintf(sz, "%ld", val);            
+  sz[len] = 0;              
+  for (int i=strlen(sz); i<len; ++i)          
+    sz[i] = ' ';              
+  if (len > 0)              
+    sz[len-1] = ' ';              
+  Serial.print(sz);             
+  smartdelay(0);              
+}               
+                
+static void print_date(TinyGPS &gps)          
+{               
+  int year;               
+  byte month, day, hour, min, second, hundredths;       
+  unsigned long age;            
+  gps.crack_datetime(&year, &month, &day, &hour, &min, &second, &hundredths, &age);
+  if (age == TinyGPS::GPS_INVALID_AGE)          
+    Serial.print("********** ******** ");         
+  else                
+  {               
+    char sz[32];              
+    sprintf(sz, "%02d/%02d/%02d %02d:%02d:%02d ",     
+        month, day, year, hour, min, second);       
+    Serial.print(sz);             
+  }               
+  print_int(age, TinyGPS::GPS_INVALID_AGE, 5);        
+  smartdelay(0);              
+}               
+                
+static void print_str(const char *str, int len)       
+{               
+  int slen = strlen(str);           
+  for (int i=0; i<len; ++i)           
+    Serial.print(i<slen ? str[i] : ' ');          
+  smartdelay(0);              
+}               
+                
+void displaydays()              
+{               
+  if (year<10)              
+  {               
+  display.print("0");             
+   display.print(year);           
+  }               
+  else  display.print(year);            
+ if (mon<10)              
+  {               
+  display.print("0");             
+   display.print(mon);            
+  }               
+  else  display.print(mon);           
+     if (day<10)              
+  {               
+  display.print("0");             
+   display.print(day);              
+  }               
+  else  display.print(day);           
+                
+  if(yoil==0)             
+    display.print("Mon");           
+                    
+  if(yoil==1)             
+    display.print("Tue");           
+                    
+  if(yoil==2)             
+    display.print("Wed");           
+                    
+  if(yoil==3)             
+    display.print("Thu");           
+                    
+  if(yoil==4)             
+    display.print("Fri");           
+                    
+  if(yoil==5)             
+    display.print("Sat");           
+                    
+  if(yoil==6)             
+    display.print("Sun");           
+                
+}         
+               
+void monthcalculate()             
+{               
+
+  if(year%4!=0)             
+  {               
+    if(mon==1,3,5,7,8,10,12) //큰달         
+    {               
+              
+        if(mon!=12) 
+        {            
+        mon++;  
+        yoil=(yoil+3)%7;
+        }            
+        else           
+        {               
+        mon=1;              
+        year++;
+        yoil=(yoil+3)%7;             
+        }               
+      }               
+    }               
+          else if(mon==4||mon==6||mon==9||mon==11) //2월 제외 작은달       
+    {                             
+      {                            
+        mon++;
+        yoil=(yoil+2)%7;             
+      }               
+    }               
+      else // 2월              
+      {               
+        mon++;              
+ 
+      }               
+                   
+  if(year%4==0) //윤년 계산           
+  {               
+        if(mon==1||mon==3||mon==5||mon==7||mon==8||mon==10||mon==12) //큰달         
+    {               
+              
+        if(mon!=12)  
+        {           
+        mon++;  
+        yoil=(yoil+3)%7 ;
+        }           
+        else           
+        {               
+        mon=1;              
+        year++;
+        yoil=(yoil+3)%7;             
+        }               
+      }               
+    }               
+     else if(mon==4||mon==6||mon==9||mon==11) //2월 제외 작은달       
+    {                             
+      {                            
+        mon++;
+        yoil=(yoil+2)%7;             
+      }               
+    }               
+      else // 2월              
+      {               
+        mon++;              
+        yoil=(yoil+1)%7;
+      }    
+  }               
+
+
+                
+void daycalculate()             
+{               
+  if(yoil<6) yoil++;              
+  else yoil=0;              
+                  
+  if(year%4!=0)             
+  {               
+ if(mon==1||mon==3||mon==5||mon==7||mon==8||mon==10||mon==12) //큰달          
+    {               
+      if(day<31)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        if(mon!=12)             
+        mon++;              
+        else              
+        {               
+        mon=1;              
+        year++;             
+        }               
+      }               
+    }               
+    else if(mon==4||mon==6||mon==9||mon==11) //2월 제외 작은달   
+    {               
+      if(day<30)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        mon++;              
+      }               
+    }               
+      else // 2월              
+      {               
+      if(day<28)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        mon++;              
+      }               
+      }               
+    }               
+  if(year%4==0) //윤년 계산           
+  {               
+    if(mon==1||mon==3||mon==5||mon==7||mon==8||mon==10||mon==12) //큰달          
+    {               
+      if(day<31)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        if(mon!=12)             
+        mon++;              
+        else              
+        {               
+        mon=1;              
+        year++;             
+        }               
+      }               
+    }               
+      else if(mon==4||mon==6||mon==9||mon==11) //2월 제외 작은달   
+    {               
+      if(day<30)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        mon++;              
+      }               
+    }               
+      else // 2월              
+      {               
+      if(day<29)              
+      day++;              
+      else                
+      {               
+        day=1;              
+        mon++;              
+      }               
+      }               
+    }               
+  }
+                 
